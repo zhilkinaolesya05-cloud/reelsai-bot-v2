@@ -22,11 +22,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
  
 # ===== КОНСТАНТЫ =====
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN', 'твой_токен_здесь')
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:8000')
  
+if not TELEGRAM_TOKEN:
+    raise ValueError("TELEGRAM_TOKEN не установлен в переменных окружения!")
+ 
 # ===== ЭТАПЫ ДИАЛОГА (Conversation states) =====
-# Этапы создания профиля
 CHOOSE_ACTION = 1
 PROFILE_NAME = 2
 PROFILE_NICHE = 3
@@ -48,14 +50,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
     
     try:
-        # Проверяем на backend есть ли пользователь
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{BACKEND_URL}/user/{user_id}") as resp:
                 if resp.status == 200:
-                    # Есть профиль - показываем меню
                     await show_main_menu(update, context)
                 else:
-                    # Нет профиля - приветствие
                     await show_welcome(update, context, user_name)
     except Exception as e:
         logger.error(f"Ошибка при проверке пользователя: {e}")
@@ -119,7 +118,6 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def create_profile_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Начало создания профиля
-    Показываем первый вопрос
     """
     
     context.user_data['creating_profile'] = True
@@ -202,7 +200,7 @@ async def profile_audience_handler(update: Update, context: ContextTypes.DEFAULT
 - "Неформально, как подруга, много эмодзи и шуток"
 - "Прямолинейно, по делу, без воды, профессионально"
 - "Сленг, молодёжный, зажигаю, шумно"
-- "Спокойно, мудро, помогаю люям"
+- "Спокойно, мудро, помогаю людям"
     """
     
     await update.message.reply_text(text)
@@ -243,17 +241,15 @@ async def profile_fleshy_handler(update: Update, context: ContextTypes.DEFAULT_T
     user_id = update.effective_user.id
     fleshy = update.message.text
     
-    # Собираем весь профиль
     profile_data = {
         'name': context.user_data.get('profile_name', ''),
         'niche': context.user_data.get('profile_niche', ''),
         'audience': context.user_data.get('profile_audience', ''),
         'voice': context.user_data.get('profile_voice', ''),
-        'fleshy': fleshy,  # Уникальная фишка
+        'fleshy': fleshy,
         'created_at': datetime.now().isoformat()
     }
     
-    # Сохраняем на backend
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -312,11 +308,9 @@ async def get_ideas_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     user_id = update.effective_user.id
     
-    # Показываем что работаем
     await update.callback_query.answer("⏳ Ищу актуальные залетные рилсы...", show_alert=False)
     
     try:
-        # Запрашиваем идеи на backend
         async with aiohttp.ClientSession() as session:
             async with session.get(
                 f"{BACKEND_URL}/ideas/generate",
@@ -347,11 +341,10 @@ async def show_ideas(update: Update, context: ContextTypes.DEFAULT_TYPE, ideas: 
         )
         return
     
-    # Показываем первую идею из списка
     idea = ideas[0]
     
     text = f"""
-💡 ИДЕЯ #{1}
+💡 ИДЕЯ #1
  
 🎬 {idea.get('title', 'Название')}
  
@@ -368,7 +361,7 @@ async def show_ideas(update: Update, context: ContextTypes.DEFAULT_TYPE, ideas: 
 {idea.get('why_viral', '')}
  
 📊 ИСТОЧНИК:
-Найдено в Инстаграме, {idea.get('views', '100K+')} просмотров
+{idea.get('views', '100K+')} просмотров
  
 #️⃣ ХЭШТЕГИ:
 {' '.join(['#' + tag for tag in idea.get('hashtags', [])])}
@@ -381,7 +374,6 @@ async def show_ideas(update: Update, context: ContextTypes.DEFAULT_TYPE, ideas: 
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Сохраняем идеи в контекст чтобы пролистывать
     context.user_data['current_ideas'] = ideas
     context.user_data['current_idea_index'] = 0
     
@@ -451,7 +443,6 @@ async def main():
     
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Conversation handler для создания профиля
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(create_profile_start, pattern="create_profile")],
         states={
@@ -464,13 +455,12 @@ async def main():
         fallbacks=[CommandHandler("cancel", lambda u, c: ConversationHandler.END)],
     )
     
-    # Добавляем обработчики
     application.add_handler(CommandHandler("start", start))
     application.add_handler(conv_handler)
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # Запускаем
     await application.run_polling()
  
 if __name__ == '__main__':
     asyncio.run(main())
+ 
